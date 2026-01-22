@@ -1,9 +1,5 @@
 package com.example.taskmanager.Entities;
 
-
-import jakarta.persistence.*;
-
-
 import jakarta.persistence.*;
 
 @Entity
@@ -21,17 +17,19 @@ public class Task {
 
     private boolean completed = false;
 
+    // 🔗 Relation ManyToOne avec User
     @ManyToOne
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     // Constructors
     public Task() {}
 
-    public Task(String title, String description, boolean completed) {
+    public Task(String title, String description, boolean completed, User user) {
         this.title = title;
         this.description = description;
         this.completed = completed;
+        this.user = user;
     }
 
     // Getters & Setters

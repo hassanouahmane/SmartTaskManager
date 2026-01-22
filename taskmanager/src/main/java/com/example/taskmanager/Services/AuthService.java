@@ -21,6 +21,7 @@ public class AuthService {
     // Login
     public User login(String email, String password) {
 
+
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
@@ -30,4 +31,10 @@ public class AuthService {
 
         return user;
     }
+    // Dans AuthService
+    public User getUserById(Long id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+    }
+
 }

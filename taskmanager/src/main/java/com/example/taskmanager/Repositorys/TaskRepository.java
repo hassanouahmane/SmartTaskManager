@@ -5,8 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
+
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
-    // optionnel : tâches par utilisateur
+    // 🔹 Tâches par utilisateur
     List<Task> findByUserId(Long userId);
 }

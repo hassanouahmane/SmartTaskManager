@@ -1,8 +1,7 @@
 package com.example.taskmanager.Services;
 
-
-
 import com.example.taskmanager.Entities.Task;
+import com.example.taskmanager.Entities.User;
 import com.example.taskmanager.Repositorys.TaskRepository;
 import org.springframework.stereotype.Service;
 
@@ -17,8 +16,9 @@ public class TaskService {
         this.taskRepository = taskRepository;
     }
 
-    // CREATE
-    public Task createTask(Task task) {
+    // CREATE avec utilisateur
+    public Task createTask(Task task, User user) {
+        task.setUser(user);
         return taskRepository.save(task);
     }
 
@@ -47,8 +47,8 @@ public class TaskService {
         taskRepository.deleteById(id);
     }
 
-    // optionnel
-    public List<Task> getTasksByUser(Long userId) {
-        return taskRepository.findByUserId(userId);
+    // LIST BY USER
+    public List<Task> getTasksByUser(User user) {
+        return taskRepository.findByUserId(user.getId());
     }
 }

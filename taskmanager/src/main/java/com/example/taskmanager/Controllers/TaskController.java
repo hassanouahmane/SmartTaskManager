@@ -1,7 +1,8 @@
 package com.example.taskmanager.Controllers;
 
-import com.example.taskmanager.Entities.Task;
-import com.example.taskmanager.Services.TaskService;
+import com.example.taskmanager.Entities.*;
+
+import com.example.taskmanager.Services.*;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,15 +13,18 @@ import java.util.List;
 public class TaskController {
 
     private final TaskService taskService;
+    private final AuthService authService; // pour récupérer l'utilisateur
 
-    public TaskController(TaskService taskService) {
+    public TaskController(TaskService taskService, AuthService authService) {
         this.taskService = taskService;
+        this.authService = authService;
     }
 
-    // ➕ CREATE
-    @PostMapping
-    public Task createTask(@RequestBody Task task) {
-        return taskService.createTask(task);
+    // ➕ CREATE task pour un utilisateur
+    @PostMapping("/create/{userId}")
+    public Task createTask(@PathVariable Long userId, @RequestBody Task task) {
+        User user = authService.getUserById(userId);
+        return taskService.createTask(task, user);
     }
 
     // 📄 READ ALL
@@ -37,9 +41,7 @@ public class TaskController {
 
     // ✏️ UPDATE
     @PutMapping("/{id}")
-    public Task updateTask(
-            @PathVariable Long id,
-            @RequestBody Task task) {
+    public Task updateTask(@PathVariable Long id, @RequestBody Task task) {
         return taskService.updateTask(id, task);
     }
 
@@ -47,5 +49,12 @@ public class TaskController {
     @DeleteMapping("/{id}")
     public void deleteTask(@PathVariable Long id) {
         taskService.deleteTask(id);
+    }
+
+    // 📄 LIST BY USER
+    @GetMapping("/user/{userId}")
+    public List<Task> getTasksByUser(@PathVariable Long userId) {
+        User user = authService.getUserById(userId);
+        return taskService.getTasksByUser(user);
     }
 }
