@@ -11,7 +11,7 @@ pipeline {
             steps {
                 git(
                     branch: 'main',
-                    url: 'https://github.com/hassanmouhamane/SmartTaskManager.git',
+                    url: 'https://github.com/hassanouahmane/SmartTaskManager.git',
                     credentialsId: 'github-token'
                 )
             }
