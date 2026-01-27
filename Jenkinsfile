@@ -6,87 +6,108 @@ pipeline {
         jdk 'JDK17'
     }
 
+    environment {
+        // You can remove this if not using elsewhere
+        DOCKER_IMAGE = "smarttaskmanager:latest"
+    }
+
     stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()  // Clean workspace before starting
+            }
+        }
+
         stage('Checkout') {
             steps {
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
+                        echo "=== Starting checkout ==="
                         git config --global user.email "jenkins@example.com"
                         git config --global user.name "Jenkins"
+
+                        # Clone the repository
                         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/hassanmouhamane/SmartTaskManager.git .
+
+                        # Checkout main branch
                         git checkout main
 
-                        # Debug: Show directory structure
-                        echo "=== Workspace structure ==="
-                        ls -la
-                        echo "=== Looking for pom.xml ==="
-                        find . -name "pom.xml" -type f
+                        echo "=== Repository cloned successfully ==="
+                        echo "=== Checking pom.xml ==="
+                        if [ -f "taskmanager/pom.xml" ]; then
+                            echo "✅ pom.xml found in taskmanager/"
+                            echo "=== pom.xml first few lines ==="
+                            head -20 taskmanager/pom.xml
+                        else
+                            echo "❌ pom.xml not found!"
+                            exit 1
+                        fi
                     '''
                 }
             }
         }
 
-        stage('Build & Package') {
+        stage('Build with Maven') {
             steps {
-                dir('taskmanager') {  // ← KEY CHANGE: Enter the subdirectory
-                    sh 'mvn clean compile -DskipTests'
+                dir('taskmanager') {
+                    sh '''
+                        echo "=== Current directory: ==="
+                        pwd
+                        echo "=== Running Maven clean compile ==="
+                        mvn clean compile -DskipTests
+                    '''
                 }
             }
         }
 
         stage('Run Tests') {
             steps {
-                dir('taskmanager') {  // ← KEY CHANGE: Enter the subdirectory
+                dir('taskmanager') {
                     sh 'mvn test'
                 }
             }
             post {
-                failure {
-                    echo '❌ Tests failed! Check test reports.'
-                    junit 'taskmanager/target/surefire-reports/**/*.xml'
+                always {
+                    junit 'taskmanager/target/surefire-reports/*.xml'
                 }
             }
         }
 
         stage('Package JAR') {
             steps {
-                dir('taskmanager') {  // ← KEY CHANGE: Enter the subdirectory
-                    sh 'mvn package -DskipTests'
+                dir('taskmanager') {
+                    sh '''
+                        echo "=== Packaging JAR ==="
+                        mvn package -DskipTests
+                        echo "=== JAR file created: ==="
+                        ls -la target/*.jar
+                    '''
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    // Check if Dockerfile exists in taskmanager directory
-                    if (fileExists('taskmanager/Dockerfile')) {
-                        dir('taskmanager') {
-                            sh 'docker build -t smarttaskmanager:latest .'
-                        }
-                    } else if (fileExists('Dockerfile')) {
-                        // Or in root directory
-                        sh 'docker build -t smarttaskmanager:latest .'
-                    } else {
-                        echo '⚠️  No Dockerfile found. Skipping Docker build.'
-                    }
+                dir('taskmanager') {
+                    sh '''
+                        echo "=== Building Docker image ==="
+                        docker build -t smarttaskmanager:latest .
+                        echo "=== Docker images: ==="
+                        docker images | grep smarttaskmanager
+                    '''
                 }
             }
         }
 
         stage('Run with Docker Compose') {
             steps {
-                script {
-                    // Check for docker-compose.yml in taskmanager or root
-                    if (fileExists('taskmanager/docker-compose.yml')) {
-                        dir('taskmanager') {
-                            sh 'docker-compose up -d --build'
-                        }
-                    } else if (fileExists('docker-compose.yml')) {
-                        sh 'docker-compose up -d --build'
-                    } else {
-                        echo '⚠️  No docker-compose.yml found. Skipping Docker Compose.'
-                    }
+                dir('taskmanager') {
+                    sh '''
+                        echo "=== Starting Docker Compose ==="
+                        docker-compose up -d --build
+                        echo "=== Running containers: ==="
+                        docker-compose ps
+                    '''
                 }
             }
         }
@@ -96,25 +117,44 @@ pipeline {
         success {
             echo '✅ Pipeline executed successfully!'
 
-            // Archive the built JAR from taskmanager directory
+            // Archive artifacts
             archiveArtifacts 'taskmanager/target/*.jar'
+
+            // Save Docker image (optional)
+            sh '''
+                docker save smarttaskmanager:latest -o smarttaskmanager.tar 2>/dev/null || true
+            '''
+            archiveArtifacts 'smarttaskmanager.tar'
         }
         failure {
             echo '❌ Pipeline failed!'
 
-            // Debug info
+            // Additional debugging
             sh '''
-                echo "=== Current directory ==="
-                pwd
-                echo "=== taskmanager/ directory contents ==="
-                ls -la taskmanager/ 2>/dev/null || echo "taskmanager directory not found"
-                echo "=== Build directory contents ==="
-                ls -la taskmanager/target/ 2>/dev/null || echo "No target directory"
+                echo "=== Maven version ==="
+                mvn --version
+                echo "=== Java version ==="
+                java --version
+                echo "=== Checking pom.xml syntax ==="
+                cd taskmanager && mvn help:effective-pom 2>/dev/null | head -50 || true
             '''
         }
         always {
-            // Clean up Docker resources
-            sh 'docker-compose down 2>/dev/null || true'
+            echo '=== Cleaning up ==='
+
+            // Stop Docker Compose
+            sh '''
+                cd taskmanager && docker-compose down 2>/dev/null || true
+            '''
+
+            // Remove Docker images to save space
+            sh '''
+                docker rmi smarttaskmanager:latest 2>/dev/null || true
+                docker system prune -f 2>/dev/null || true
+            '''
+
+            // Optional: Clean workspace
+            // cleanWs()
         }
     }
 }
