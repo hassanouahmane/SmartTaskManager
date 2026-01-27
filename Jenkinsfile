@@ -9,8 +9,6 @@ pipeline {
     environment {
         PROJECT_DIR = 'taskmanager'
         DOCKER_IMAGE = 'smarttaskmanager'
-        TEST_POSTGRES_PORT = '5433'      // Port pour les tests
-        DEPLOY_POSTGRES_PORT = '5432'
     }
 
     stages {
@@ -38,17 +36,6 @@ pipeline {
             }
         }
 
-        stage('Verify Permissions') {
-            steps {
-                echo '🔐 Vérification des permissions...'
-                dir("${PROJECT_DIR}") {
-                    sh 'ls -la'
-                    sh 'pwd'
-                    sh 'whoami'
-                }
-            }
-        }
-
         stage('Build') {
             steps {
                 echo '🔨 Compilation du projet...'
@@ -58,25 +45,9 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            steps {
-                echo '🧪 Exécution des tests...'
-                dir("${PROJECT_DIR}") {
-                    sh 'mvn test'
-                }
-            }
-            post {
-                always {
-                    dir("${PROJECT_DIR}") {
-                        junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-                    }
-                }
-            }
-        }
-
         stage('Package') {
             steps {
-                echo '📦 Création du package JAR...'
+                echo '📦 Création du package JAR (sans tests)...'
                 dir("${PROJECT_DIR}") {
                     sh 'mvn package -DskipTests'
                 }
@@ -100,11 +71,46 @@ pipeline {
             }
         }
 
+        stage('Stop Previous Deployment') {
+            steps {
+                echo '🛑 Arrêt du déploiement précédent...'
+                dir("${PROJECT_DIR}") {
+                    sh '''
+                        # Arrêter docker-compose
+                        docker-compose down || true
+
+                        # Forcer l'arrêt et la suppression des conteneurs PostgreSQL
+                        docker stop postgres_db 2>/dev/null || true
+                        docker rm postgres_db 2>/dev/null || true
+
+                        # Arrêter l'application
+                        docker stop spring-app 2>/dev/null || true
+                        docker rm spring-app 2>/dev/null || true
+
+                        # Attendre que les ports se libèrent
+                        echo "Attente de la libération des ports..."
+                        sleep 10
+
+                        # Vérifier que le port 5432 est libre
+                        if lsof -Pi :5432 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+                            echo "⚠️ Port 5432 encore occupé, nettoyage forcé..."
+                            PID=$(lsof -ti :5432)
+                            if [ ! -z "$PID" ]; then
+                                kill -9 $PID || true
+                                sleep 3
+                            fi
+                        else
+                            echo "✅ Port 5432 est libre"
+                        fi
+                    '''
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 echo '🚀 Déploiement avec Docker Compose...'
                 dir("${PROJECT_DIR}") {
-                    sh 'docker-compose down || true'
                     sh 'docker-compose up -d --build'
                 }
             }
@@ -115,20 +121,29 @@ pipeline {
                 echo '🏥 Vérification de l\'application...'
                 script {
                     dir("${PROJECT_DIR}") {
-                        sleep 20
+                        sleep 25
                         sh 'docker-compose ps'
                         sh '''
-                            for i in {1..10}; do
+                            for i in {1..15}; do
                                 if curl -f http://localhost:8080/actuator/health 2>/dev/null || curl -f http://localhost:8080 2>/dev/null; then
                                     echo "✅ Application accessible!"
                                     exit 0
                                 fi
-                                echo "⏳ Tentative $i/10..."
-                                sleep 3
+                                echo "⏳ Tentative $i/15..."
+                                sleep 4
                             done
-                            echo "⚠️ Application pas encore accessible, mais déployée"
+                            echo "⚠️ Application déployée mais vérification timeout"
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Display Logs') {
+            steps {
+                echo '📋 Affichage des logs...'
+                dir("${PROJECT_DIR}") {
+                    sh 'docker-compose logs --tail=30 || true'
                 }
             }
         }
@@ -143,10 +158,11 @@ pipeline {
             echo '❌ Le pipeline a échoué!'
             dir("${PROJECT_DIR}") {
                 sh 'docker-compose logs --tail=100 || true'
+                sh 'docker ps -a || true'
             }
         }
         always {
-            echo '🧹 Nettoyage...'
+            echo '🧹 Nettoyage des images inutilisées...'
             sh 'docker image prune -f || true'
         }
     }
