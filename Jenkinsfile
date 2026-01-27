@@ -5,20 +5,15 @@ pipeline {
         maven 'Maven'
         jdk 'JDK17'
     }
-     environment {
-
-            GITHUB_TOKEN = credentials('github-token')
-
-            DOCKER_IMAGE = "taskmanager_app:latest"
-        }
-
 
     stages {
-
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/hassanmouhamane/SmartTaskManager.git'
+                git(
+                    branch: 'main',
+                    url: 'https://github.com/hassanmouhamane/SmartTaskManager.git',
+                    credentialsId: 'github-token'
+                )
             }
         }
 
