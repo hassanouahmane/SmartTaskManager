@@ -5,6 +5,13 @@ pipeline {
         maven 'Maven'
         jdk 'JDK17'
     }
+     environment {
+
+            GITHUB_TOKEN = credentials('github-token')
+
+            DOCKER_IMAGE = "taskmanager_app:latest"
+        }
+
 
     stages {
 
