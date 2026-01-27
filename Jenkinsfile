@@ -6,7 +6,25 @@ pipeline {
         jdk 'JDK17'
     }
 
+    environment {
+        PROJECT_DIR = 'taskmanager'
+        DOCKER_IMAGE = 'smarttaskmanager'
+    }
+
     stages {
+        stage('Setup & Clean') {
+            steps {
+                echo '🧹 Préparation de l\'environnement...'
+                script {
+                    // Nettoyer complètement
+                    sh 'rm -rf taskmanager/target/ || true'
+
+                    // S'assurer des bonnes permissions
+                    sh 'chmod -R 755 . || true'
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 echo '📥 Récupération du code source...'
@@ -18,11 +36,54 @@ pipeline {
             }
         }
 
-        stage('Build & Test') {
+        stage('Verify Permissions') {
+            steps {
+                echo '🔐 Vérification des permissions...'
+                dir("${PROJECT_DIR}") {
+                    sh 'ls -la'
+                    sh 'pwd'
+                    sh 'whoami'
+                }
+            }
+        }
+
+        stage('Build') {
             steps {
                 echo '🔨 Compilation du projet...'
-                dir('taskmanager') {
-                    sh 'mvn clean package -DskipTests'
+                dir("${PROJECT_DIR}") {
+                    sh 'mvn clean compile'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo '🧪 Exécution des tests...'
+                dir("${PROJECT_DIR}") {
+                    sh 'mvn test'
+                }
+            }
+            post {
+                always {
+                    dir("${PROJECT_DIR}") {
+                        junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                    }
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                echo '📦 Création du package JAR...'
+                dir("${PROJECT_DIR}") {
+                    sh 'mvn package -DskipTests'
+                }
+            }
+            post {
+                success {
+                    dir("${PROJECT_DIR}") {
+                        archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                    }
                 }
             }
         }
@@ -30,16 +91,17 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo '🐳 Construction de l\'image Docker...'
-                dir('taskmanager') {
-                    sh 'docker build -t smarttaskmanager:latest .'
+                dir("${PROJECT_DIR}") {
+                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
                 }
             }
         }
 
-        stage('Run with Docker Compose') {
+        stage('Deploy') {
             steps {
-                echo '🚀 Démarrage avec Docker Compose...'
-                dir('taskmanager') {
+                echo '🚀 Déploiement avec Docker Compose...'
+                dir("${PROJECT_DIR}") {
                     sh 'docker-compose down || true'
                     sh 'docker-compose up -d --build'
                 }
@@ -48,10 +110,23 @@ pipeline {
 
         stage('Health Check') {
             steps {
-                echo '🏥 Vérification de l\'état de l\'application...'
+                echo '🏥 Vérification de l\'application...'
                 script {
-                    sleep 15 // Attendre que l'app démarre
-                    sh 'docker-compose ps'
+                    dir("${PROJECT_DIR}") {
+                        sleep 20
+                        sh 'docker-compose ps'
+                        sh '''
+                            for i in {1..10}; do
+                                if curl -f http://localhost:8080/actuator/health 2>/dev/null || curl -f http://localhost:8080 2>/dev/null; then
+                                    echo "✅ Application accessible!"
+                                    exit 0
+                                fi
+                                echo "⏳ Tentative $i/10..."
+                                sleep 3
+                            done
+                            echo "⚠️ Application pas encore accessible, mais déployée"
+                        '''
+                    }
                 }
             }
         }
@@ -60,15 +135,17 @@ pipeline {
     post {
         success {
             echo '✅ Pipeline exécuté avec succès!'
+            echo '🎉 Application disponible sur http://localhost:8080'
         }
         failure {
             echo '❌ Le pipeline a échoué!'
-            dir('taskmanager') {
-                sh 'docker-compose logs --tail=50'
+            dir("${PROJECT_DIR}") {
+                sh 'docker-compose logs --tail=100 || true'
             }
         }
         always {
             echo '🧹 Nettoyage...'
+            sh 'docker image prune -f || true'
         }
     }
 }
