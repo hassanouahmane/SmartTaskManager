@@ -18,7 +18,7 @@ services:
     build: .
     container_name: task_app
     ports:
-      - "8080:8080"
+      - "8081:8080"
     depends_on:
       - postgres
     environment:
