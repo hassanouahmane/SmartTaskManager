@@ -9,7 +9,7 @@ pipeline {
     environment {
         PROJECT_DIR = 'taskmanager'
         DOCKER_IMAGE = 'smarttaskmanager'
-        TEST_POSTGRES_PORT = '5433'      // Port pour les tests
+        TEST_POSTGRES_PORT = '5432'      // Port pour les tests
         DEPLOY_POSTGRES_PORT = '5432'
     }
 
