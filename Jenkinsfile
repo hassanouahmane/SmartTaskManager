@@ -60,10 +60,31 @@ pipeline {
 
         stage('Test') {
             steps {
-                echo '🧪 Exécution des tests...'
-                dir("${PROJECT_DIR}") {
-                    sh 'mvn test'
-                }
+                                echo '🧪 Exécution des tests...'
+                                dir("${PROJECT_DIR}") {
+                                        sh '''
+                                                echo '➡️ Démarrage de PostgreSQL pour les tests...'
+                                                docker compose up -d postgres || true
+
+                                                # Attendre que le port 5432 écoute (max 30s)
+                                                for i in {1..30}; do
+                                                    if ss -ltn | grep -q ':5432'; then
+                                                        echo '✅ PostgreSQL écoute sur le port 5432'
+                                                        break
+                                                    fi
+                                                    echo "⏳ Attente PostgreSQL ($i/30)..."
+                                                    sleep 1
+                                                done
+
+                                                # Si pg_isready est disponible, l'utiliser
+                                                if command -v pg_isready >/dev/null 2>&1; then
+                                                    pg_isready -h localhost -p 5432 -q || true
+                                                fi
+
+                                                echo '➡️ Lancement des tests Maven'
+                                        '''
+                                        sh 'mvn test'
+                                }
             }
             post {
                 always {
